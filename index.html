@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#14141f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>백지 공부장</title>
+<link rel="manifest" href="manifest.json">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:     #14141f;
+  --bg2:    #1e1e2e;
+  --bg3:    #28283c;
+  --amber:  #f5a623;
+  --text:   #e8e4dc;
+  --dim:    #6b6b8a;
+  --paper:  #faf8f3;
+  --grid:   #e8e4da;
+  --tb-h:   52px;
+  --sb-w:   220px;
+}
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html,body { height:100%; overflow:hidden; font-family:'Noto Sans KR',sans-serif; background:var(--bg); }
+
+/* ── LAYOUT ── */
+#app { display:flex; flex-direction:column; height:100dvh; }
+#toolbar { height:var(--tb-h); background:var(--bg); border-bottom:1px solid #ffffff10; display:flex; align-items:center; gap:4px; padding:0 10px; flex-shrink:0; z-index:50; }
+#main { display:flex; flex:1; overflow:hidden; }
+#sidebar { width:var(--sb-w); background:var(--bg2); border-right:1px solid #ffffff08; display:flex; flex-direction:column; flex-shrink:0; transition:width .2s; overflow:hidden; }
+#sidebar.hidden { width:0; }
+#canvas-wrap { flex:1; overflow:auto; background:#2a2a3c; position:relative; }
+
+/* ── TOOLBAR ── */
+.tb-group { display:flex; gap:2px; padding:0 6px; border-right:1px solid #ffffff10; }
+.tb-group:last-child { border-right:none; margin-left:auto; }
+.tb-btn {
+  background:none; border:none; color:var(--dim);
+  width:38px; height:38px; border-radius:8px;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  cursor:pointer; font-size:9px; gap:2px; transition:all .15s;
+  font-family:'Noto Sans KR',sans-serif;
+}
+.tb-btn svg { width:18px; height:18px; }
+.tb-btn:hover { background:var(--bg3); color:var(--text); }
+.tb-btn.active { background:var(--amber); color:#000; }
+
+/* Color picker for pen */
+.color-row { display:flex; gap:4px; align-items:center; }
+.color-dot {
+  width:20px; height:20px; border-radius:50%;
+  cursor:pointer; border:2px solid transparent;
+  transition:transform .15s;
+}
+.color-dot.active { border-color:white; transform:scale(1.2); }
+.size-btn {
+  background:var(--bg3); border:none; color:var(--text);
+  padding:4px 8px; border-radius:6px; cursor:pointer;
+  font-size:11px; font-family:'Noto Sans KR',sans-serif;
+}
+
+/* Marker level */
+.marker-row { display:flex; gap:4px; align-items:center; }
+.mark-btn {
+  padding:4px 10px; border-radius:6px; border:none;
+  font-size:11px; font-weight:700; cursor:pointer;
+  font-family:'Noto Sans KR',sans-serif; opacity:.6; transition:opacity .15s;
+}
+.mark-btn.active { opacity:1; }
+.mark-1 { background:#ffd700; color:#000; }
+.mark-2 { background:#ff8c00; color:#000; }
+.mark-3 { background:#dc3545; color:#fff; }
+
+/* Date display */
+#date-display {
+  font-family:'Space Mono',monospace;
+  font-size:11px; color:var(--dim);
+  padding:0 8px;
+}
+
+/* ── SIDEBAR ── */
+#sidebar-header {
+  padding:14px 16px 10px;
+  font-size:11px; font-weight:700; letter-spacing:2px;
+  color:var(--dim); text-transform:uppercase;
+  border-bottom:1px solid #ffffff08;
+  display:flex; justify-content:space-between; align-items:center;
+}
+#new-note-btn {
+  background:var(--amber); border:none; color:#000;
+  font-size:11px; font-weight:700; padding:4px 10px;
+  border-radius:6px; cursor:pointer;
+  font-family:'Noto Sans KR',sans-serif;
+}
+#note-list { flex:1; overflow-y:auto; }
+.note-item {
+  padding:12px 16px; cursor:pointer;
+  border-bottom:1px solid #ffffff06;
+  font-size:13px; color:var(--text);
+  display:flex; align-items:center; justify-content:space-between;
+  transition:background .15s;
+}
+.note-item:hover { background:var(--bg3); }
+.note-item.active { background:var(--bg3); color:var(--amber); }
+.note-item-date { font-family:'Space Mono',monospace; font-size:12px; }
+.note-del { background:none; border:none; color:var(--dim); cursor:pointer; font-size:14px; padding:2px 6px; border-radius:4px; }
+.note-del:hover { color:#f87171; background:#ffffff10; }
+
+/* ── PAPER CANVAS AREA ── */
+#page {
+  width:1200px;
+  min-height:1600px;
+  background:var(--paper);
+  margin:20px auto;
+  position:relative;
+  border-radius:4px;
+  box-shadow:0 8px 40px rgba(0,0,0,.5);
+  overflow:hidden;
+}
+
+/* Dot grid */
+#page::before {
+  content:'';
+  position:absolute; inset:0;
+  background-image:radial-gradient(circle, var(--grid) 1px, transparent 1px);
+  background-size:28px 28px;
+  background-position:14px 14px;
+  pointer-events:none; z-index:0;
+}
+
+/* Drawing canvas layers */
+#draw-canvas, #marker-canvas {
+  position:absolute; inset:0;
+  width:100%; height:100%;
+}
+#draw-canvas { z-index:1; }
+#marker-canvas { z-index:10; pointer-events:none; }
+
+/* Content layer (text boxes, tables) */
+#content-layer { position:absolute; inset:0; z-index:5; }
+
+/* ── TEXT BOXES ── */
+.textbox {
+  position:absolute;
+  min-width:80px; min-height:28px;
+  background:transparent;
+  border:1.5px dashed transparent;
+  border-radius:4px;
+  padding:4px 6px;
+  font-size:15px;
+  line-height:1.7;
+  color:#1a1a1a;
+  cursor:default;
+  white-space:pre-wrap;
+  word-break:break-word;
+  font-family:'Noto Sans KR',sans-serif;
+}
+.textbox.selected { border-color:#4a90d9; }
+.textbox[contenteditable="true"] { outline:none; cursor:text; border-color:#4a90d9; }
+.tb-handle {
+  position:absolute; top:-10px; left:50%; transform:translateX(-50%);
+  width:20px; height:5px; background:#4a90d9;
+  border-radius:3px; cursor:move; display:none;
+}
+.textbox.selected .tb-handle { display:block; }
+.tb-delete {
+  position:absolute; top:-10px; right:-10px;
+  width:18px; height:18px; background:#f87171;
+  border:none; border-radius:50%; color:#fff;
+  font-size:11px; cursor:pointer; display:none;
+  line-height:18px; text-align:center;
+}
+.textbox.selected .tb-delete { display:block; }
+
+/* ── TABLES ── */
+.study-table {
+  position:absolute;
+  border-collapse:collapse;
+  cursor:default;
+  background:white;
+  box-shadow:0 1px 4px rgba(0,0,0,.1);
+}
+.study-table td {
+  border:1px solid #ccc;
+  padding:6px 10px;
+  min-width:80px; min-height:28px;
+  font-size:13px; color:#1a1a1a;
+}
+.study-table td[contenteditable="true"] { outline:none; background:#fffdf7; }
+.study-table.selected { outline:2px solid #4a90d9; }
+
+/* ── TOAST ── */
+.toast {
+  position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+  background:var(--bg); color:var(--text);
+  padding:10px 20px; border-radius:20px;
+  font-size:13px; z-index:9999;
+  border:1px solid #ffffff15;
+  animation:fadeOut 2s forwards;
+  pointer-events:none;
+}
+@keyframes fadeOut { 0%,60%{opacity:1} 100%{opacity:0} }
+
+/* scrollbar */
+::-webkit-scrollbar { width:5px; height:5px; }
+::-webkit-scrollbar-thumb { background:var(--bg3); border-radius:3px; }
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- ══ TOOLBAR ══ -->
+<div id="toolbar">
+  <!-- Sidebar toggle -->
+  <div class="tb-group">
+    <button class="tb-btn" onclick="toggleSidebar()" title="저장 목록">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Mode buttons -->
+  <div class="tb-group">
+    <button class="tb-btn active" id="btn-pen" onclick="setMode('pen')" title="펜">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+      </svg>
+      펜
+    </button>
+    <button class="tb-btn" id="btn-text" onclick="setMode('text')" title="텍스트">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="4,7 4,4 20,4 20,7"/><line x1="9" y1="20" x2="15" y2="20"/>
+        <line x1="12" y1="4" x2="12" y2="20"/>
+      </svg>
+      텍스트
+    </button>
+    <button class="tb-btn" id="btn-table" onclick="setMode('table')" title="표">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/>
+        <line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/>
+      </svg>
+      표
+    </button>
+    <button class="tb-btn" id="btn-marker" onclick="setMode('marker')" title="오개념 체크">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+        <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+      </svg>
+      체크
+    </button>
+    <button class="tb-btn" id="btn-eraser" onclick="setMode('eraser')" title="지우개">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M20 20H7L3 16l10-10 7 7-1.5 1.5"/><path d="M6.0 11.0l7 7"/>
+      </svg>
+      지우개
+    </button>
+  </div>
+
+  <!-- Pen options -->
+  <div class="tb-group" id="pen-opts">
+    <div class="color-row">
+      <div class="color-dot active" style="background:#1a1a2e" onclick="setPenColor('#1a1a2e',this)"></div>
+      <div class="color-dot" style="background:#c00020" onclick="setPenColor('#c00020',this)"></div>
+      <div class="color-dot" style="background:#1a6e3a" onclick="setPenColor('#1a6e3a',this)"></div>
+      <div class="color-dot" style="background:#1a3a8e" onclick="setPenColor('#1a3a8e',this)"></div>
+      <div class="color-dot" style="background:#888" onclick="setPenColor('#888',this)"></div>
+    </div>
+    <button class="size-btn" onclick="cyclePenSize()">굵기: <span id="size-label">2</span></button>
+  </div>
+
+  <!-- Marker options -->
+  <div class="tb-group" id="marker-opts" style="display:none">
+    <div class="marker-row">
+      <button class="mark-btn mark-1 active" onclick="setMarkerLevel(1,this)">1회</button>
+      <button class="mark-btn mark-2" onclick="setMarkerLevel(2,this)">2회</button>
+      <button class="mark-btn mark-3" onclick="setMarkerLevel(3,this)">3회+</button>
+    </div>
+  </div>
+
+  <!-- Table size options -->
+  <div class="tb-group" id="table-opts" style="display:none">
+    <span style="font-size:12px;color:var(--dim)">행</span>
+    <input type="number" id="tbl-rows" value="3" min="1" max="10" style="width:40px;background:var(--bg3);border:none;color:var(--text);padding:4px;border-radius:6px;text-align:center;font-size:12px;outline:none;">
+    <span style="font-size:12px;color:var(--dim)">열</span>
+    <input type="number" id="tbl-cols" value="3" min="1" max="8" style="width:40px;background:var(--bg3);border:none;color:var(--text);padding:4px;border-radius:6px;text-align:center;font-size:12px;outline:none;">
+  </div>
+
+  <!-- Right group -->
+  <div class="tb-group">
+    <div id="date-display"></div>
+    <button class="tb-btn" onclick="saveNote()" title="저장">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/>
+        <polyline points="17,21 17,13 7,13 7,21"/><polyline points="7,3 7,8 15,8"/>
+      </svg>
+      저장
+    </button>
+    <button class="tb-btn" onclick="clearPage()" title="초기화">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+      </svg>
+      초기화
+    </button>
+  </div>
+</div>
+
+<!-- ══ MAIN ══ -->
+<div id="main">
+
+  <!-- Sidebar -->
+  <div id="sidebar">
+    <div id="sidebar-header">
+      저장 노트
+      <button id="new-note-btn" onclick="newNote()">+ 새 노트</button>
+    </div>
+    <div id="note-list"></div>
+  </div>
+
+  <!-- Canvas wrap -->
+  <div id="canvas-wrap">
+    <div id="page">
+      <canvas id="draw-canvas"></canvas>
+      <div id="content-layer"></div>
+      <canvas id="marker-canvas"></canvas>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<script>
+/* ════════════════════════════════
+   STATE
+════════════════════════════════ */
+let mode       = 'pen';
+let penColor   = '#1a1a2e';
+let penSizes   = [1, 2, 4, 7];
+let penSizeIdx = 1;
+let markerLvl  = 1;
+let isDrawing  = false;
+let lastX = 0, lastY = 0;
+let tbCount = 0;
+let currentDate = today();
+let sidebarOpen = true;
+
+const MARKER_COLORS = {
+  1: 'rgba(255,215,0,0.45)',
+  2: 'rgba(255,140,0,0.45)',
+  3: 'rgba(220,50,50,0.45)'
+};
+
+/* ════════════════════════════════
+   CANVAS SETUP
+════════════════════════════════ */
+const page        = document.getElementById('page');
+const drawCanvas  = document.getElementById('draw-canvas');
+const markCanvas  = document.getElementById('marker-canvas');
+const dCtx        = drawCanvas.getContext('2d');
+const mCtx        = markCanvas.getContext('2d');
+const contentLayer = document.getElementById('content-layer');
+
+function resizeCanvases() {
+  const w = page.offsetWidth;
+  const h = page.offsetHeight;
+
+  // Save draw canvas
+  const dData = dCtx.getImageData(0, 0, drawCanvas.width, drawCanvas.height);
+  const mData = mCtx.getImageData(0, 0, markCanvas.width, markCanvas.height);
+
+  drawCanvas.width  = w; drawCanvas.height = h;
+  markCanvas.width  = w; markCanvas.height = h;
+
+  dCtx.putImageData(dData, 0, 0);
+  mCtx.putImageData(mData, 0, 0);
+
+  dCtx.lineCap = 'round';
+  dCtx.lineJoin = 'round';
+  mCtx.lineCap = 'round';
+  mCtx.lineJoin = 'round';
+}
+
+window.addEventListener('resize', resizeCanvases);
+resizeCanvases();
+
+/* ════════════════════════════════
+   UTILS
+════════════════════════════════ */
+function today() {
+  return new Date().toISOString().slice(0,10);
+}
+
+function getXY(e) {
+  const rect = page.getBoundingClientRect();
+  const wrap  = document.getElementById('canvas-wrap');
+  const scrollX = wrap.scrollLeft;
+  const scrollY = wrap.scrollTop;
+  if (e.touches) {
+    return {
+      x: e.touches[0].clientX - rect.left,
+      y: e.touches[0].clientY - rect.top
+    };
+  }
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
+
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2100);
+}
+
+/* ════════════════════════════════
+   MODE
+════════════════════════════════ */
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll('.tb-btn[id^=btn-]').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-'+m)?.classList.add('active');
+
+  // Show/hide option groups
+  document.getElementById('pen-opts').style.display    = (m==='pen'||m==='eraser') ? 'flex' : 'none';
+  document.getElementById('marker-opts').style.display = m==='marker' ? 'flex' : 'none';
+  document.getElementById('table-opts').style.display  = m==='table' ? 'flex' : 'none';
+
+  // Canvas pointer events
+  drawCanvas.style.pointerEvents = (m==='pen'||m==='eraser') ? 'auto' : 'none';
+  markCanvas.style.pointerEvents = m==='marker' ? 'auto' : 'none';
+
+  // Deselect text boxes unless text mode
+  if (m !== 'text') deselectAll();
+
+  // Cursor
+  page.style.cursor = m==='pen' ? 'crosshair' :
+                      m==='eraser' ? 'cell' :
+                      m==='text' ? 'text' :
+                      m==='table' ? 'copy' :
+                      m==='marker' ? 'crosshair' : 'default';
+}
+
+/* ════════════════════════════════
+   PEN & ERASER
+════════════════════════════════ */
+function penStart(e) {
+  if (mode !== 'pen' && mode !== 'eraser') return;
+  e.preventDefault();
+  isDrawing = true;
+  const {x,y} = getXY(e);
+  lastX = x; lastY = y;
+  dCtx.beginPath();
+  dCtx.moveTo(x, y);
+  applyPenStyle();
+}
+
+function penMove(e) {
+  if (!isDrawing) return;
+  e.preventDefault();
+  const {x,y} = getXY(e);
+  if (mode === 'eraser') {
+    const sz = penSizes[penSizeIdx] * 6;
+    dCtx.clearRect(x - sz/2, y - sz/2, sz, sz);
+  } else {
+    dCtx.lineTo(x, y);
+    dCtx.stroke();
+  }
+  lastX = x; lastY = y;
+}
+
+function penEnd(e) {
+  if (!isDrawing) return;
+  e.preventDefault();
+  isDrawing = false;
+  dCtx.closePath();
+}
+
+function applyPenStyle() {
+  dCtx.strokeStyle = mode==='eraser' ? '#fff' : penColor;
+  dCtx.lineWidth   = penSizes[penSizeIdx];
+  dCtx.lineCap     = 'round';
+  dCtx.lineJoin    = 'round';
+}
+
+drawCanvas.addEventListener('mousedown',  penStart);
+drawCanvas.addEventListener('mousemove',  penMove);
+drawCanvas.addEventListener('mouseup',    penEnd);
+drawCanvas.addEventListener('mouseleave', penEnd);
+drawCanvas.addEventListener('touchstart', penStart, {passive:false});
+drawCanvas.addEventListener('touchmove',  penMove,  {passive:false});
+drawCanvas.addEventListener('touchend',   penEnd,   {passive:false});
+
+/* ════════════════════════════════
+   MARKER
+════════════════════════════════ */
+function markStart(e) {
+  if (mode !== 'marker') return;
+  e.preventDefault();
+  isDrawing = true;
+  const {x,y} = getXY(e);
+  lastX = x; lastY = y;
+  mCtx.beginPath();
+  mCtx.moveTo(x, y);
+  mCtx.strokeStyle = MARKER_COLORS[markerLvl];
+  mCtx.lineWidth   = 18;
+  mCtx.lineCap     = 'round';
+  mCtx.lineJoin    = 'round';
+}
+
+function markMove(e) {
+  if (!isDrawing) return;
+  e.preventDefault();
+  const {x,y} = getXY(e);
+  mCtx.lineTo(x, y);
+  mCtx.stroke();
+  lastX = x; lastY = y;
+}
+
+function markEnd(e) {
+  isDrawing = false;
+  mCtx.closePath();
+}
+
+markCanvas.addEventListener('mousedown',  markStart);
+markCanvas.addEventListener('mousemove',  markMove);
+markCanvas.addEventListener('mouseup',    markEnd);
+markCanvas.addEventListener('mouseleave', markEnd);
+markCanvas.addEventListener('touchstart', markStart, {passive:false});
+markCanvas.addEventListener('touchmove',  markMove,  {passive:false});
+markCanvas.addEventListener('touchend',   markEnd,   {passive:false});
+
+/* ════════════════════════════════
+   TEXT BOXES
+════════════════════════════════ */
+function addTextBox(x, y) {
+  tbCount++;
+  const id = 'tb-' + tbCount;
+  const div = document.createElement('div');
+  div.className = 'textbox selected';
+  div.id = id;
+  div.contentEditable = 'true';
+  div.style.left = x + 'px';
+  div.style.top  = y + 'px';
+  div.style.width = '200px';
+
+  div.addEventListener('mousedown', e => {
+    if (mode !== 'text') return;
+    e.stopPropagation();
+    deselectAll();
+    div.classList.add('selected');
+    div.contentEditable = 'true';
+    startDrag(div, e);
+  });
+
+  div.addEventListener('blur', () => {
+    if (!div.textContent.trim()) {
+      div.remove();
+    }
+  });
+
+  // Delete button
+  const del = document.createElement('button');
+  del.className = 'tb-delete';
+  del.textContent = '×';
+  del.addEventListener('mousedown', e => { e.stopPropagation(); div.remove(); });
+  div.appendChild(del);
+
+  contentLayer.appendChild(div);
+  div.focus();
+}
+
+function startDrag(el, e) {
+  if (e.target.classList.contains('tb-delete')) return;
+  const startX = e.clientX - parseInt(el.style.left);
+  const startY = e.clientY - parseInt(el.style.top);
+  el.contentEditable = 'false';
+
+  function onMove(ev) {
+    el.style.left = (ev.clientX - startX) + 'px';
+    el.style.top  = (ev.clientY - startY) + 'px';
+  }
+  function onUp() {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    el.contentEditable = 'true';
+    el.focus();
+  }
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+function deselectAll() {
+  document.querySelectorAll('.textbox').forEach(tb => {
+    tb.classList.remove('selected');
+    tb.contentEditable = 'false';
+  });
+  document.querySelectorAll('.study-table').forEach(t => t.classList.remove('selected'));
+}
+
+/* ════════════════════════════════
+   TABLES
+════════════════════════════════ */
+function addTable(x, y) {
+  const rows = parseInt(document.getElementById('tbl-rows').value) || 3;
+  const cols = parseInt(document.getElementById('tbl-cols').value) || 3;
+
+  const wrap = document.createElement('div');
+  wrap.style.position = 'absolute';
+  wrap.style.left = x + 'px';
+  wrap.style.top  = y + 'px';
+
+  const tbl = document.createElement('table');
+  tbl.className = 'study-table';
+
+  for (let r = 0; r < rows; r++) {
+    const tr = document.createElement('tr');
+    for (let c = 0; c < cols; c++) {
+      const td = document.createElement('td');
+      td.contentEditable = 'true';
+      tr.appendChild(td);
+    }
+    tbl.appendChild(tr);
+  }
+
+  wrap.appendChild(tbl);
+
+  // Drag
+  wrap.addEventListener('mousedown', e => {
+    if (mode !== 'text') return;
+    if (e.target.tagName === 'TD') return;
+    e.preventDefault();
+    const sx = e.clientX - parseInt(wrap.style.left);
+    const sy = e.clientY - parseInt(wrap.style.top);
+    function onMove(ev) { wrap.style.left=(ev.clientX-sx)+'px'; wrap.style.top=(ev.clientY-sy)+'px'; }
+    function onUp() { document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp); }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  contentLayer.appendChild(wrap);
+}
+
+/* ════════════════════════════════
+   PAGE CLICK
+════════════════════════════════ */
+page.addEventListener('click', e => {
+  if (mode === 'text') {
+    if (e.target === page || e.target.id === 'page') {
+      const rect = page.getBoundingClientRect();
+      addTextBox(e.clientX - rect.left, e.clientY - rect.top);
+    } else if (!e.target.closest('.textbox') && !e.target.closest('.study-table')) {
+      deselectAll();
+    }
+  } else if (mode === 'table') {
+    const rect = page.getBoundingClientRect();
+    addTable(e.clientX - rect.left, e.clientY - rect.top);
+    setMode('text');
+  }
+});
+
+/* ════════════════════════════════
+   TOOLBAR HELPERS
+════════════════════════════════ */
+function setPenColor(c, el) {
+  penColor = c;
+  document.querySelectorAll('.color-dot').forEach(d => d.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function cyclePenSize() {
+  penSizeIdx = (penSizeIdx + 1) % penSizes.length;
+  document.getElementById('size-label').textContent = penSizes[penSizeIdx];
+}
+
+function setMarkerLevel(lvl, el) {
+  markerLvl = lvl;
+  document.querySelectorAll('.mark-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function toggleSidebar() {
+  sidebarOpen = !sidebarOpen;
+  document.getElementById('sidebar').classList.toggle('hidden', !sidebarOpen);
+}
+
+/* ════════════════════════════════
+   SAVE / LOAD
+════════════════════════════════ */
+function collectState() {
+  const boxes = [];
+  document.querySelectorAll('.textbox').forEach(tb => {
+    boxes.push({
+      id: tb.id,
+      left: tb.style.left,
+      top:  tb.style.top,
+      width: tb.style.width,
+      html: tb.innerHTML.replace(/<button[^>]*>.*?<\/button>/g,'') // strip delete btn
+    });
+  });
+
+  const tables = [];
+  document.querySelectorAll('#content-layer > div').forEach(wrap => {
+    const tbl = wrap.querySelector('table');
+    if (!tbl) return;
+    const cellData = [];
+    tbl.querySelectorAll('tr').forEach(tr => {
+      const row = [];
+      tr.querySelectorAll('td').forEach(td => row.push(td.innerHTML));
+      cellData.push(row);
+    });
+    tables.push({ left: wrap.style.left, top: wrap.style.top, cells: cellData });
+  });
+
+  return {
+    draw:   drawCanvas.toDataURL(),
+    marker: markCanvas.toDataURL(),
+    boxes,
+    tables
+  };
+}
+
+function saveNote() {
+  const key = 'sn_' + currentDate;
+  localStorage.setItem(key, JSON.stringify(collectState()));
+  updateNoteList();
+  showToast('✓ 저장됐어 · ' + currentDate);
+}
+
+function loadNote(date) {
+  const raw = localStorage.getItem('sn_' + date);
+  if (!raw) return;
+  clearPage(true);
+  currentDate = date;
+  updateDateDisplay();
+  updateNoteList();
+
+  const data = JSON.parse(raw);
+
+  // Draw canvas
+  const img1 = new Image();
+  img1.onload = () => dCtx.drawImage(img1, 0, 0);
+  img1.src = data.draw;
+
+  // Marker canvas
+  const img2 = new Image();
+  img2.onload = () => mCtx.drawImage(img2, 0, 0);
+  img2.src = data.marker;
+
+  // Text boxes
+  (data.boxes||[]).forEach(b => {
+    tbCount++;
+    const div = document.createElement('div');
+    div.className = 'textbox';
+    div.id = b.id || ('tb-'+tbCount);
+    div.contentEditable = 'false';
+    div.style.left  = b.left;
+    div.style.top   = b.top;
+    div.style.width = b.width;
+    div.innerHTML   = b.html;
+
+    const del = document.createElement('button');
+    del.className = 'tb-delete';
+    del.textContent = '×';
+    del.addEventListener('mousedown', e => { e.stopPropagation(); div.remove(); });
+    div.appendChild(del);
+
+    div.addEventListener('mousedown', e => {
+      if (mode !== 'text') return;
+      e.stopPropagation();
+      deselectAll();
+      div.classList.add('selected');
+      div.contentEditable = 'true';
+      startDrag(div, e);
+    });
+    contentLayer.appendChild(div);
+  });
+
+  // Tables
+  (data.tables||[]).forEach(t => {
+    const wrap = document.createElement('div');
+    wrap.style.position = 'absolute';
+    wrap.style.left = t.left;
+    wrap.style.top  = t.top;
+    const tbl = document.createElement('table');
+    tbl.className = 'study-table';
+    t.cells.forEach(row => {
+      const tr = document.createElement('tr');
+      row.forEach(cell => {
+        const td = document.createElement('td');
+        td.contentEditable = 'true';
+        td.innerHTML = cell;
+        tr.appendChild(td);
+      });
+      tbl.appendChild(tr);
+    });
+    wrap.appendChild(tbl);
+    wrap.addEventListener('mousedown', e => {
+      if (mode !== 'text') return;
+      if (e.target.tagName === 'TD') return;
+      e.preventDefault();
+      const sx = e.clientX - parseInt(wrap.style.left);
+      const sy = e.clientY - parseInt(wrap.style.top);
+      function onMove(ev) { wrap.style.left=(ev.clientX-sx)+'px'; wrap.style.top=(ev.clientY-sy)+'px'; }
+      function onUp() { document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp); }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+    contentLayer.appendChild(wrap);
+  });
+}
+
+function newNote() {
+  currentDate = today();
+  clearPage(true);
+  updateDateDisplay();
+  updateNoteList();
+}
+
+function clearPage(silent=false) {
+  dCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+  mCtx.clearRect(0, 0, markCanvas.width, markCanvas.height);
+  contentLayer.innerHTML = '';
+  tbCount = 0;
+  if (!silent) showToast('초기화됐어');
+}
+
+function deleteNote(date) {
+  if (!confirm(`${date} 노트를 삭제할까요?`)) return;
+  localStorage.removeItem('sn_' + date);
+  if (date === currentDate) clearPage(true);
+  updateNoteList();
+}
+
+function getSavedDates() {
+  return Object.keys(localStorage)
+    .filter(k => k.startsWith('sn_'))
+    .map(k => k.slice(3))
+    .sort((a,b) => b.localeCompare(a));
+}
+
+function updateNoteList() {
+  const list = document.getElementById('note-list');
+  const dates = getSavedDates();
+  list.innerHTML = dates.length ? '' : '<div style="padding:20px 16px;font-size:12px;color:var(--dim)">저장된 노트가 없어</div>';
+  dates.forEach(d => {
+    const item = document.createElement('div');
+    item.className = 'note-item' + (d === currentDate ? ' active' : '');
+    item.innerHTML = `<span class="note-item-date">${d}</span>`;
+    const del = document.createElement('button');
+    del.className = 'note-del';
+    del.textContent = '×';
+    del.addEventListener('click', e => { e.stopPropagation(); deleteNote(d); });
+    item.appendChild(del);
+    item.addEventListener('click', () => loadNote(d));
+    list.appendChild(item);
+  });
+}
+
+function updateDateDisplay() {
+  document.getElementById('date-display').textContent = currentDate;
+}
+
+/* ════════════════════════════════
+   AUTO SAVE (5분마다)
+════════════════════════════════ */
+setInterval(saveNote, 5 * 60 * 1000);
+
+/* ════════════════════════════════
+   KEYBOARD SHORTCUTS
+════════════════════════════════ */
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.contentEditable === 'true') return;
+  if (e.key === 'p' || e.key === 'P') setMode('pen');
+  if (e.key === 't' || e.key === 'T') setMode('text');
+  if (e.key === 'm' || e.key === 'M') setMode('marker');
+  if (e.key === 'e' || e.key === 'E') setMode('eraser');
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveNote(); }
+});
+
+/* ════════════════════════════════
+   INIT
+════════════════════════════════ */
+updateDateDisplay();
+updateNoteList();
+setMode('pen');
+resizeCanvases();
+
+if ('serviceWorker' in navigator)
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>
